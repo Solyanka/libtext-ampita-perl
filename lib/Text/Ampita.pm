@@ -3,13 +3,13 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.002';
+use version; our $VERSION = '0.003';
 # $Id$
 # $Version$
 
 my %XML_SPECIAL = (
     q{&} => '&amp;', q{<} => '&lt;', q{>} => '&gt;',
-    q{"} => '&quot;', q{'} => q{&#39;},
+    q{"} => '&quot;', q{'} => q{&#39;}, q{\\} => q{&#92;},
 ); 
 my $ID = qr{[A-Za-z_:][A-Za-z0-9_:-]*}msx;
 my $SP = qr{[\x20\t\n\r]}msx;
@@ -27,10 +27,15 @@ sub extend {
 
 sub generate {
     my($class, $xml, $hint) = @_;
+    $class = ref $class || $class;
     my $doc = $class->_scan($xml);
     $hint ||= {};
-    my $perl = "sub{my(\$binding)=\@_;use utf8;\n"
-        . "require $class;my \$r='$class';my \$t=q{};\n";
+    my $perl = "sub{\n"
+        . "my(\$binding)=\@_;\n"
+        . "use utf8;\n"
+        . "require $class;\n"
+        . "my \$r='$class';\n"
+        . "my \$t=q{};\n";
     my @path = ($doc);
     my($node, $i) = ($doc, 0);
     my @todo = (sub{});
@@ -62,13 +67,17 @@ sub generate {
             }
         }
     }
-    return $perl . "return \$t;}\n";
+    return $perl
+        . "return \$t;\n"
+        . "}\n";
 }
 
 sub _scan {
     my($class, $xml) = @_;
     my $document = [
-        [q{}, q{}, q{}, [], q{}, q{}, q{}], [], [q{}, q{}, q{}, [], q{}, q{}, q{}],
+        [q{}, q{}, q{}, [], q{}, q{}, q{}],
+        [],
+        [q{}, q{}, q{}, [], q{}, q{}, q{}],
     ];
     my @ancestor;
     my $node = $document;
@@ -86,9 +95,8 @@ sub _scan {
             my($id1, $t2, $sp3, $gt4, $id5, $sp6, $t7, $nl8)
                 = ($1, $2, $3, $4, $5, $6, $7, $8);
             if ($id1) {
-                my $element = [
-                    [$t, q{<}, $id1, [$t2 =~ m{$ATTR}msxog], $sp3, $gt4, $nl8],
-                ];
+                my $attr = [$t2 =~ m{$ATTR}msxog];
+                my $element = [[$t, q{<}, $id1, $attr, $sp3, $gt4, $nl8]];
                 push @{$node->[1]}, $element;
                 next if $gt4 eq q{/>};
                 push @{$element}, [];
@@ -98,8 +106,7 @@ sub _scan {
             }
             elsif ($id5) {
                 my $id1 = $node->[0][2];
-                $id5 eq $id1
-                    or croak "<$id1> ne </$id5>";
+                $id5 eq $id1 or croak "<$id1> ne </$id5>";
                 push @{$node}, [$t, q{</}, $id5, [], $sp6, q{>}, $nl8];
                 $node = pop @ancestor;
                 next;
@@ -148,6 +155,7 @@ sub _match_selector_list {
 
 sub _match_selector {
     my($class, $selector, $element) = @_;
+    my $stag = $element->[0];
     if ($selector =~ m{\A
         (?:($ID) (?:\#($ID)|\.([a-zA-Z0-9_:-]+)|\[($ID)=\"([^\"]+)\"\])?
         |  \*?   (?:\#($ID)|\.([a-zA-Z0-9_:-]+)|\[($ID)=\"([^\"]+)\"\])
@@ -157,10 +165,8 @@ sub _match_selector {
         my($attr, $value) = $id ? ('id', $id)
             : $classname ? ('class', $classname)
             : ($4 || $8, $5 || $9);
-        return (! $tagname || $element->[0][2] eq $tagname)
-            && (! $attr
-                || $value eq ($class->_attr($element->[0], $attr) || q{})
-            );
+        return (! $tagname || $stag->[2] eq $tagname)
+            && (! $attr || $value eq ($class->_attr($stag, $attr) || q{}));
     }
     return;
 }
@@ -183,29 +189,28 @@ sub _build_data {
 sub _build_stag {
     my($class, $element) = @_;
     my $a = $element->[0];
-    return "\$t.="
-        . $class->_q(@{$a}[0 .. 2], @{$a->[3]}, @{$a}[4 .. 6])
-        . ";\n";
+    my $stag = $class->_q(@{$a}[0 .. 2], @{$a->[3]}, @{$a}[4 .. 6]);
+    return "\$t.=$stag;\n";
 }
 
 sub _build_etag {
     my($class, $element) = @_;
-    return "\$t.=" . $class->_q(@{$element->[2]}[0 .. 2, 4 .. 6]) . ";\n";
+    my $etag = $class->_q(@{$element->[2]}[0 .. 2, 4 .. 6]);
+    return "\$t.=$etag;\n";
 }
 
 sub _build_scode {
     my($class, $element, $key) = @_;
+    my $_attr = join q{,}, map { $class->_q($_) } @{$element->[0][3]};
+    my $_stag = join q{,},
+        (map { $class->_q($_) } @{$element->[0]}[0, 1, 2]),
+        q{[} . $_attr . q{]},
+        (map { $class->_q($_) } @{$element->[0]}[4, 5, 6]);
     my $perl = "\$binding->{" . $class->_q($key) . "}->(sub{\n"
         . "my(\@data) = \@_;\n"
-        . "my \$attr = ref \$data[0] eq 'HASH' ? {\%{shift \@data}} : {};\n"
-        . "return if(\$attr->{-skip} || q{}) eq 'all';\n"
-        . "\$t.=\$r->_stag([" . (join q{,},
-            (map { $class->_q($_) } @{$element->[0]}[0, 1, 2]),
-            (q{[}
-            . (join q{,}, map { $class->_q($_) } @{$element->[0][3]})
-            . q{]}),
-            (map { $class->_q($_) } @{$element->[0]}[4, 5, 6]),
-        ) . "],\$attr);\n";
+        . "my \$attr = {ref \$data[0] eq 'HASH' ? \%{shift \@data} : ()};\n"
+        . "return if (\$attr->{'-skip'} || q{}) eq 'all';\n"
+        . "\$t.=\$r->_stag([$_stag],\$attr);\n";
     if ($element->[0][5] eq q{/>}) {
         $perl .= $class->_build_argrest($element);
     }
@@ -222,18 +227,16 @@ sub _build_scode {
 sub _build_argrest {
     my($class, $element) = @_;
     return '}, {'
-        . (join q{,}, map { $class->_q($_) } %{$class->_attr($element->[0])})
+        . (join q{,}, map { $class->_q($_) } $class->_attr($element->[0]))
         . '},' . $class->_q($class->_data($element) || q{}) . ");\n";
 }
 
 sub _build_ecode {
     my($class, $element) = @_;
+    my $etag = $class->_q(@{$element->[2]}[0 .. 2, 4 .. 6]);
     return "}\n"
-        . "\$t.=\$r->_etag([" . (join q{,},
-            (map { $class->_q($_) } @{$element->[2]}[0, 1, 2]),
-            q{[]},
-            (map { $class->_q($_) } @{$element->[2]}[4, 5, 6]),
-        ) . "],\$attr);\n"
+        . "return if \$attr->{'-skip'};\n"
+        . "\$t.=$etag;\n"
         . $class->_build_argrest($element);
 }
 
@@ -245,13 +248,13 @@ sub _q {
 }
 
 sub _stag {
-    my($self, $tmpl, $attr) = @_;
+    my($class, $tmpl, $attr) = @_;
     my $stag = [@{$tmpl}[0 .. 2], [@{$tmpl->[3]}], @{$tmpl}[4 .. 6]];
     if (! $attr->{-skip}) {
-        $self->_attr($stag, 'id' => undef);
+        $class->_attr($stag, 'id' => undef);
         while (my($k, $v) = each %{$attr}) {
             next if $k !~ /\A$ID\z/msx;
-            $self->_attr($stag, $k, $self->_attr_filter($tmpl, $k, $v));
+            $class->_attr($stag, $k => $class->_attr_filter($tmpl, $k, $v));
         }
     }
     if ($stag->[2] eq 'span' && @{$stag->[3]} == 0) {
@@ -261,18 +264,12 @@ sub _stag {
     return join q{}, @{$stag}[0 .. 2], @{$stag->[3]}, @{$stag}[4 .. 6];
 }
 
-sub _etag {
-    my($self, $etag, $attr) = @_;
-    return q{} if $attr->{-skip};
-    return join q{}, @{$etag}[0 .. 2, 4 .. 6];
-}
-
 sub _attr {
-    my($self, $stag, @arg) = @_;
+    my($class, $stag, @arg) = @_;
     my $attr = $stag->[3]; # [(' ', 'name', '="', 'value', '"') ...]
-    my @indecs = map { $_ * 5 } 0 .. (@{$attr} / 5) - 1;
+    my @indecs = map { $_ * 5 } 0 .. -1 + int @{$attr} / 5;
     if (! @arg) {
-        return { map { @{$attr}[$_ + 1, $_ + 3] } @indecs };
+        return map { @{$attr}[$_ + 1, $_ + 3] } @indecs;
     }
     my $name = shift @arg or return;
     for my $i (@indecs) {
@@ -288,7 +285,8 @@ sub _attr {
         }
     }
     if (@arg && defined $arg[0]) {
-        my @a = @{$attr} ? @{$attr}[-5 .. -1] : (q{ }, q{}, q{="}, q{}, q{"});
+        my @a = @{$attr} ? @{$attr}[-5 .. -1]
+            : (q{ }, q{}, q{="}, q{}, q{"});
         @a[1, 3] = ($name, $arg[0]);
         push @{$attr}, @a;
         return $a[3];
@@ -296,49 +294,55 @@ sub _attr {
     return;
 }
 
+my %FILTERS = (
+    'URI' => 'uri',
+    'URL' => 'uri',
+    'HTML' => 'xml',
+    'XML' => 'xml',
+    'RAW' => 'raw',
+    'TEXT' => 'text',
+);
+
+sub _choose_filter {
+    my($class, $modifier, $default_filter) = @_;
+    my $filter = $FILTERS{$modifier} || $default_filter;
+    return "_filter_${filter}";
+}
+
 sub _attr_filter {
-    my($self, $stag, $attrname, $value) = @_;
+    my($class, $stag, $attrname, $value) = @_;
     return $value if ! defined $value;
     my $tagname = lc $stag->[3];
-    my $filter = $self->_choose_filter(
-        $self->_attr($stag, $attrname) || q{},
+    my $filter = $class->_choose_filter(
+        $class->_attr($stag, $attrname) || q{},
         $tagname eq 'input' && $attrname eq 'value' ? 'xml'
         : $attrname =~ /(?:\A(?:action|src|href|cite)|resource)\z/msxi ? 'uri'
         : 'text',
     );
-    return $self->$filter($value);
+    return $class->$filter($value);
 }
 
-sub _choose_filter {
-    my($self, $modifier, $filter) = @_;
-    $modifier ||= q{};
-    if ($modifier =~ /\b(?:(UR[IL])|((?:HT|X)ML)|(RAW)|(TEXT))\b/msx) {
-        $filter = $1 ? 'uri' : $2 ? 'xml' : $3 ? 'raw' : 'text';
-    }
-    return "_${filter}_filter";
-}
+sub _filter_raw { return $_[1] }
 
-sub _raw_filter { return $_[1] }
-
-sub _xml_filter {
+sub _filter_xml {
     my($class, $t) = @_;
     $t = defined $t ? $t : q{};
-    $t =~ s{([<>"'&])}{ $XML_SPECIAL{$1} }msxge;
+    $t =~ s{([<>"'&\\])}{ $XML_SPECIAL{$1} }egmsx;
     return $t;
 }
 
-sub _text_filter {
+sub _filter_text {
     my($class, $t) = @_;
     $t = defined $t ? $t : q{};
     $t =~ s{
-        (?:([<>"'])|\&(?:([A-Za-z_]\w*|\#(?:[0-9]{1,5}|x[0-9A-Fa-f]{2,4}));)?)
+        (?:([<>"'\\])|\&(?:([A-Za-z_]\w*|\#(?:[0-9]{1,5}|x[0-9A-Fa-f]{2,4}));)?)
     }{
         $1 ? $XML_SPECIAL{$1} : $2 ? qq{\&$2;} : q{&amp;}
-    }msxgoe;
+    }egmosx;
     return $t;
 };
 
-sub _uri_filter {
+sub _filter_uri {
     my($class, $t) = @_;
     $t = defined $t ? $t : q{};
     if (utf8::is_utf8($t)) {
@@ -346,10 +350,10 @@ sub _uri_filter {
         $t = Encode::encode('utf-8', $t);
     }
     $t =~ s{
-        (?:(\%([0-9A-Fa-f]{2})?)|(&(?:amp;)?)|([^a-zA-Z0-9_\-.=+\$,:\@/;?\#]))
+        (%([0-9A-Fa-f]{2})?)|(&(?:amp;)?)|([^A-Za-z0-9\-_~*+=/.!,;:\@?\#])
     }{
-        $2 ? $1 : $1 ? '%25' : $3 ? '&amp;' : sprintf '%%%02X', ord $4
-    }msxgoe;
+        $2 ? $1 : $1 ? q{%25} : $3 ? q{&amp;} : sprintf '%%%02X', ord $4
+    }egmosx;
     return $t;
 }
 
@@ -365,7 +369,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
 
 =head1 VERSION
 
-0.002
+0.003
 
 =head1 SYNOPSIS
 
@@ -458,7 +462,7 @@ MIZUTANI Tociyuki  C<< <tociyuki@gmail.com> >>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2010, MIZUTANI Tociyuki C<< <tociyuki@gmail.com> >>.
+Copyright (c) 2011, MIZUTANI Tociyuki C<< <tociyuki@gmail.com> >>.
 All rights reserved.
 
 This module is free software; you can redistribute it and/or

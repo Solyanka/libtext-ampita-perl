@@ -1,5 +1,9 @@
 Revision history for Text-Ampita
 
+0.003  Sat Jul 16 05:10:02 2011 GMT
+    ! delete function _etag()
+    + escape backslashs too.
+
 0.002  Tue May 18 14:40:13 2010 GMT
     ! clean codes in function _attr()
 

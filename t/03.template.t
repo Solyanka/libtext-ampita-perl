@@ -116,18 +116,18 @@ __END__
 <d>TEXT</d>
 <e>default</e>',
 {
-    'a' => sub{ shift->('<&>"&amp;&nbsp;') },
-    'b' => sub{ shift->('<&>"&amp;&nbsp;') },
-    'c' => sub{ shift->('<&>"&amp;&nbsp;') },
-    'd' => sub{ shift->('<&>"&amp;&nbsp;') },
-    'e' => sub{ shift->('<&>"&amp;&nbsp;') },
+    'a' => sub{ shift->('<&>"&amp;&nbsp;\\') },
+    'b' => sub{ shift->('<&>"&amp;&nbsp;\\') },
+    'c' => sub{ shift->('<&>"&amp;&nbsp;\\') },
+    'd' => sub{ shift->('<&>"&amp;&nbsp;\\') },
+    'e' => sub{ shift->('<&>"&amp;&nbsp;\\') },
 }
 --- expected
-<a>&lt;&amp;&gt;&quot;&amp;amp;&amp;nbsp;</a>
-<b>&lt;&amp;&gt;&quot;&amp;amp;&amp;nbsp;</b>
-<c><&>"&amp;&nbsp;</c>
-<d>&lt;&amp;&gt;&quot;&amp;&nbsp;</d>
-<e>&lt;&amp;&gt;&quot;&amp;&nbsp;</e>
+<a>&lt;&amp;&gt;&quot;&amp;amp;&amp;nbsp;&#92;</a>
+<b>&lt;&amp;&gt;&quot;&amp;amp;&amp;nbsp;&#92;</b>
+<c><&>"&amp;&nbsp;\</c>
+<d>&lt;&amp;&gt;&quot;&amp;&nbsp;&#92;</d>
+<e>&lt;&amp;&gt;&quot;&amp;&nbsp;&#92;</e>
 
 === tagname tagname
 --- input
@@ -283,20 +283,20 @@ FOO
 {
     'link' => sub{
         shift->({
-            'href' => '&<>"&amp;%12%45%+',
-            'src' => '&<>"&amp;%12%45%+',
-            'cite' => '&<>"&amp;%12%45%+',
-            'title' => '&<>"&amp;%12%45%+',
-            'rdf:resource' => '&<>"&amp;%12%45%+'
+            'href' => '&<>"\\&amp;%12%45%+',
+            'src' => '&<>"\\&amp;%12%45%+',
+            'cite' => '&<>"\\&amp;%12%45%+',
+            'title' => '&<>"\\&amp;%12%45%+',
+            'rdf:resource' => '&<>"\\&amp;%12%45%+'
         });
     },
 }
 --- expected
-<link href="&amp;%3C%3E%22&amp;%12%45%25+"
- src="&amp;%3C%3E%22&amp;%12%45%25+"
- cite="&amp;%3C%3E%22&amp;%12%45%25+"
- title="&amp;&lt;&gt;&quot;&amp;%12%45%+"
- rdf:resource="&amp;%3C%3E%22&amp;%12%45%25+"/>
+<link href="&amp;%3C%3E%22%5C&amp;%12%45%25+"
+ src="&amp;%3C%3E%22%5C&amp;%12%45%25+"
+ cite="&amp;%3C%3E%22%5C&amp;%12%45%25+"
+ title="&amp;&lt;&gt;&quot;&#92;&amp;%12%45%+"
+ rdf:resource="&amp;%3C%3E%22%5C&amp;%12%45%25+"/>
 
 === attribute modifier
 --- input
@@ -309,22 +309,22 @@ FOO
 {
     'link' => sub{
         shift->({
-            'a' => '&<>"&amp;%12%45%+',
-            'b' => '&<>"&amp;%12%45%+',
-            'c' => '&<>"&amp;%12%45%+',
-            'd' => '&<>"&amp;%12%45%+',
+            'a' => '&<>"\\&amp;%12%45%+',
+            'b' => '&<>"\\&amp;%12%45%+',
+            'c' => '&<>"\\&amp;%12%45%+',
+            'd' => '&<>"\\&amp;%12%45%+',
             'e' => '&<>&amp;%12%45%+',
-            'f' => '&<>"&amp;%12%45%+',
+            'f' => '&<>"\\&amp;%12%45%+',
         });
     },
 }
 --- expected
-<link a="&amp;%3C%3E%22&amp;%12%45%25+"
- b="&amp;%3C%3E%22&amp;%12%45%25+"
- c="&amp;&lt;&gt;&quot;&amp;amp;%12%45%+"
- d="&amp;&lt;&gt;&quot;&amp;amp;%12%45%+"
+<link a="&amp;%3C%3E%22%5C&amp;%12%45%25+"
+ b="&amp;%3C%3E%22%5C&amp;%12%45%25+"
+ c="&amp;&lt;&gt;&quot;&#92;&amp;amp;%12%45%+"
+ d="&amp;&lt;&gt;&quot;&#92;&amp;amp;%12%45%+"
  e="&<>&amp;%12%45%+"
- f="&amp;&lt;&gt;&quot;&amp;%12%45%+"/>
+ f="&amp;&lt;&gt;&quot;&#92;&amp;%12%45%+"/>
 
 === add attribute
 --- input
