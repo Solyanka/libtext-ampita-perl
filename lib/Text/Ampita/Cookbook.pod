@@ -1,0 +1,533 @@
+=head1 NAME
+
+Text::Ampita::Cookbook - Text::Ampita Cookbook
+
+=head1 DESCRIPTION
+
+Text::Ampita provides you to generate perl scripts that work as
+template processors for the Extensible Markup Language (XML)
+document, and to run them.
+
+The original XML documents need no special direction for the
+template processing as below.
+
+    <h1>untitled</h1>
+
+Generated templates transform XML elements directly. This way
+has its origin in Amrita template system for the ruby language
+by Taku Nakajima.
+
+Text::Ampita uses selectors to identify transformed XML elements
+at both generating templates and running them. The selectors are
+the keys of the binding hash reference by which the original XML
+document is transformed into another at run-times.
+
+=over
+
+=item *
+
+Element selectors look like Cascading Style Sheets (CSS).
+
+=item *
+
+Rules are perl code references or constants.
+
+=back
+
+Here is an example of a binding for above original XML document.
+
+    my $binding = {
+        'h1' => sub{
+            my($yield, $attr, $data) = @_;
+            $yield->('Hello, World!');
+        },
+    };
+
+=head2 utf8 flags
+
+On the text processing in perl language, it is important that
+we know how libraries treat utf8 flag.
+
+Text::Ampita assumes that utf8 flag is on for multibytes text.
+One of generated perl scripts are still turned on.
+One of transformed documents are also turned on.
+
+By the arrangements, we can write a whole script with the set
+of the above original document and the binding.
+
+    #!/usr/bin/perl
+    use strict;
+    use warnings;
+    use Text::Ampita;
+    use Encode;
+
+    my $binding = {
+        'h1' => sub{
+            my($yield, $attr, $data) = @_;
+            $yield->('Hello, World!');
+        },
+    };
+    my $Ampita = Text::Ampita->new(Encode::decode('UTF-8', <<'EOS'));
+    <h1>untitled</h1>
+    EOS
+    my $template_source = $Ampita->generate($binding);
+    # $cache->set('my template', Encode::encode('UTF-8', $template_source));
+    my $template = eval $template_source; ## no critic (StringyEval)
+    print Encode::encode('UTF-8', $template->($binding));
+
+First definition of a variable C<$binding> describes the binding
+as an unblessed hash by which the content of h1 element is
+transformed. Second statement creates an instance of Text::Ampita
+for the here-doc XML document. At third statement, the instance
+generates a perl script of the template corresponding to the
+original XML document and the selectors in the binding. Commented
+out statement shows an example how sets the generated script
+into some caches. Now we can get the compiled template code
+reference with the built-in eval function. To avoid critic errors,
+we may annotate a no critic pragma shown in the code. Finally,
+we call the template processing code reference with the binding.
+
+=head2 Hello, World! - Inserting text values
+
+Let's replace text values in the element h1.
+
+    <h1>untitled</h1>
+
+In a given original XML document, substitute 'untitled'
+to 'Hello, World!'. The transformed document shall be got:
+
+    <h1>Hello, World!</h1>
+
+For such case, we may make a binding that has a key-value
+pair in which the key selects the 'h1' element, and in which
+the value is a rule for the content substitution.
+
+    my $binding = {
+        'h1' => sub{
+            my($yield, $attr, $data) = @_;
+            $yield->('Hello, World!');
+        },
+    };
+
+or compactly
+
+    my $binding = {
+        'h1' => sub{ shift->('Hello, World!'); },
+    };
+
+To replace content of the element, call the element procedure
+with scalar arguments. The template proccesor calls rule code
+references with four arguments: an element procedure, a hash
+reference for original XML attributes, an original XML content,
+and the binding itself. By calling the element procedure,
+the translated element will be written in the transformed XML
+document by the element builder after the end of executing
+the rule code reference. 
+
+=head2 Editing of attributes
+
+Let's change attributes in a following original XML document.
+
+    <e id="sample" a="0" b="1" c="2"><f>thing</f></e>
+
+In the element 'e', substitute the value of the attribute 'a',
+delete the attribute 'b', and add an attribute 'd' without
+any changes for contents.
+
+    <e a="A" c="2" d="D"><f>thing</f></e>
+
+To edit attributes, call the element procedure with a hash reference.
+The keys in the hash reference are the name of attributes.
+When the values in the hash reference are types of scalars,
+substitute values or add attributes. When the values are undef,
+delete attributes from the element.
+
+In special case, if the element has an attribute 'id', the element
+builder removes it before construction automatically.
+
+    my $binding = {
+        '#sample' => sub{
+            shift->({
+                a => 'A',       # substitute
+                b => undef,     # delete
+                d => 'D',       # add
+            });
+        },
+    };
+
+To remain the original attribute 'id', pass the value of original 'id'
+from the original attributes hash.
+
+    my $binding = {
+        '#sample' => sub{
+            my($yield, $attr) = @_;
+            $yield->({
+                id => $attr->{id},
+                a => 'A',
+                b => undef,
+                d => 'D',
+            });
+        },
+    };
+
+=head2 Substitution content and attributes
+
+Let's change the content and the attributes at the same time.
+
+    <a href=""></a>
+
+For example, we hope to get the following transformed document from
+the above document.
+
+    <a href="http://www.cpan.org/" title="CPAN">CPAN top page</a>
+
+To substitute the attributes and the content, call the element
+procedure with a hash referenece for attributes and a list of scalar
+strings for the content. In this case, a hash reference must be
+appeared at top of arguments.
+
+    my $binding = {
+        'a' => sub{
+            shift->({
+                href => 'http://www.cpan.org/',
+                title => 'CPAN',
+            }, 'CPAN', q{ }, 'top page');
+        },
+    };
+
+=head2 Selectors
+
+The selectors in the binding look like CSS's one.
+We may specify an element with the combination of
+the tagname and the value of attribute, and narrow the
+range with the list of the combinations.
+
+    my $binding = {
+        'E' => 'the element E',
+        'E F' => 'the element F included in the element E',
+        'tag' => 'the element has a tagname',
+        'NS:tag' => 'the colon mark is available in names',
+        'tag#a' => 'the element has a tagname and an id value',
+        'tag.a' => 'the element has a tagname and a class value',
+        'tag[name="value"]' => 'the element has a tagname and name="value"',
+        '*#a' => 'the element has id a, as same as *[id="a"]',
+        '*.a' => 'the element has class a, as same as *[class="a"]',
+        '*[name="value"]' => 'the element has value at the blank
+                  separated list of attribute name',
+        '#a' => 'as same as *#a',
+        '.a' => 'as same as *.a',
+        '[name="value"]' => 'as same as *[name="value"]',
+        # 'tag#a.b[name="value"]' => 'cascading attributes are not available',
+        # '*#a.b[name="value"]' => 'cascading attributes are not available',
+        # '*' => 'wildcard without attributes is not available',
+    };
+
+=head2 Expand binding
+
+Sometimes, a same binding are used over different bindings.
+In such case, Text::Ampita provides you to expand a component
+binding into the main binding with a selector prefix.
+
+    my $calendar = Calendar::Binding->new;
+    my $binding = {
+        # your rules.
+    };
+    Text::Ampita->expand($binding, '.calendar', $calendar);
+
+=head2 Disappear span tags
+
+Usually the element builder remains start and end tags
+of elements, and yet it hides start and end tags of span
+without attributes automatically.
+
+    <p><span class="season"></span> has come.</p>
+
+For example, make above substituting with the following rule
+by which the attribute 'class' will be deleted.
+
+    my $binding = {
+        '.season' => sub{ shift->({class => undef}, 'Winter'); },
+    };
+
+The builder writes into the transformed document without span tags.
+
+    <p>Winter has come.</p>
+
+At the current version, there is no way to stop this feature.
+
+=head2 Disappear tags with -skip property
+
+Let's hide tags 'div'.
+
+    <div id="hidetag">
+    <p>Foo bar, ..</p>
+    </div>
+
+To get transformed document:
+
+    <p>Foo bar, ..</p>
+
+call the building procedure with property '-skip' that is true.
+
+    my $binding = {
+        '#hidetag' => sub{ shift->({-skip => 'tag'}); },
+    };
+
+This is useful for block operations.
+
+=head2 Hide element (1) -skip, undef, empty array reference
+
+To conditional building elements, it is available to skip
+building elements. For example, build the one-div without
+another-div by a condition.
+
+    <div id="iftrue">TRUE</div>
+    <div id="ifelse">FALSE</div>
+
+When conditional variable C<$code> is true, build only '#iftrue'.
+
+    <div id="iftrue">TRUE</div>
+
+There are two ways.
+
+=over 
+
+=item 1.
+
+Call the element procedure to build.
+
+    my $cond;
+    my $binding = {
+        '#iftrue' => sub{
+            if ($cond) {
+                shift->();
+            }
+        },
+        '#ifelse' => sub{
+            if (! $cond) {
+                shift->();
+            }
+        },
+    };
+
+When the element procedure are called without arguments,
+the element builder keeps an original element as it is
+except for attribute 'id'.
+
+=item 2.
+
+Call the element procedure with property -skip to skip.
+
+    my $cond;
+    my $binding = {
+        '#iftrue' => sub{ shift->({-skip => $cond ? undef : 'all'}); },
+        '#ifelse' => sub{ shift->({-skip => $cond ? 'all' : undef}); },
+    };
+
+=back
+
+=head2 Repeatedly building
+
+There are two way for building the element repeatedly.
+Let's use following original XML document.
+
+    <ol>
+     <li></li>
+    </ol>
+
+After processing, we hope to get following one.
+
+    <ol>
+      <li>Jan Mayen</li>
+      <li>Bodo</li>
+      <li>Trondheim</li>
+      <li>Bergen</li>
+    </ol>
+
+Call the element procedure repeatedly.
+
+    my $binding = {
+        'li' => sub{
+            my($yield) = @_;
+            $yield->('Jan Mayen');
+            $yield->('Bodo');
+            $yield->('Trondheim');
+            $yield->('Bergen');
+        },
+    };
+
+Obcource, we might use a foreach statement.
+
+    my $binding = {
+        'li' => sub{
+            my($yield) = @_;
+            for my $location ('Jan Mayen', 'Bodo', 'Trondheim', 'Bergen') {
+                $yield->($location);
+            }
+        },
+    };
+
+To add attributes in same time as following.
+
+    <ol>
+      <li type="a">Jan Mayen</li>
+      <li type="a">Bodo</li>
+      <li type="a">Trondheim</li>
+      <li type="a">Bergen</li>
+    </ol>
+
+In the case of repeated call, add a hash reference for attributes.
+
+    my $binding = {
+        'li' => sub{
+            my($yield) = @_;
+            for my $location ('Jan Mayen', 'Bodo', 'Trondheim', 'Bergen') {
+                $yield->({type => 'a'}, $location);
+            }
+        },
+    };
+
+=head2 Using Closure for The Iteration
+
+From below
+
+    <ul>
+     <li><a href=""></a></li>
+    </ul>
+
+Let's create four list items.
+
+    <ul>
+     <li><a href="http://www.python.org/">Python</a></li>
+     <li><a href="http://www.zend.com/">PHP</a></li>
+     <li><a href="http://www.perl.org/">Perl</a></li>
+    </ul>
+
+We can use the closure for this purpose.
+
+    my $binding = sub{
+        my @langs = @_;
+        my $entry;
+        return {
+            'li' => sub{
+                my($yield) = @_;
+                my @a = @langs;
+                while (@{$entry}{'name', 'link'} = splice @a, 0, 2) {
+                    $yield->();
+                }
+            },
+            'li a' => sub{
+                shift->({href => $entry->{'link'}}, $entry->{name});
+            }
+        };
+    }->(
+        'Python' => 'http://www.python.org/',
+        'PHP' => 'http://www.zend.com/',
+        'Perl' => 'http://www.perl.org/',
+    );
+
+=head2 Escape characters
+
+The element builder escapes special characters of XML or URI
+according to context automatically. Usually, it escapes
+four special characters of XML but does not touch named entities
+or number entities (TEXT). For input value attributes and contents
+of textarea, it escapes all four special characters (XML). It encodes
+href, src, and action attribute values by URI-encoded rules (URI).
+
+In the original XML document, we may overwrite escaping.
+Passing escapes, use RAW.
+
+    <html>
+     <head>
+      <link rel="TEXT" href="URI"/>
+      <title>TEXT</title>
+     </head>
+     <body>
+      <h1>TEXT</h1>
+      <p>TEXT<a href="URI">TEXT</a>TEXT</p>
+      <img src="URI" alt="TEXT" title="TEXT" />
+      <form action="URI" method="TEXT">
+       TEXT
+       <textarea name="TEXT">XML</textarea>
+       <input type="TEXT" name="TEXT" value="XML" />
+      </form>
+     </body>
+    </html>
+
+=head2 Attributes and contents in the original XML document
+
+Rule code references get the attributes in the original document
+at second argument and first text contents at third argument.
+The original attribute becomes a hash reference in which
+key is a name of an attribute, and in which value is a value
+of the attribute.
+
+For example, render time stumps by using strftime format from
+original contents.
+
+    <abbr class="published" title="%FT%T+09:00">%Y-%m-%d</abbr>
+
+By helping Time::Piece module, binding becomes as following.
+
+    my $binding = {
+        'abbr.published' => sub{
+            my($yield, $attr, $data) = @_;
+            require Time::Piece;
+            my $time = Time::Piece::localtime;
+            $yield->({
+                title => $time->strftime($attr->{title} || '%FT%T+09:00'),
+            }, $time->strftime($data || '%F %T'),
+        },
+    };
+
+=head2 APPENDIX: Markup for definition lists
+
+To pass W3C XHTML validator, element 'dl' has only elements 'dt' or 'dd'.
+
+    <dl>
+    <dd id="ditem">
+    <dl>
+     <dt></dt>
+     <dd></dd>
+    </dl>
+    </dd>
+    </dl>
+
+Use -skip property for above document.
+
+    my $binding = sub{
+        my @symbol = qw(dollar scalar atmark array percent hash);
+        my($t, $d);
+        return {
+            '#ditem' => sub{ shift->({-skip => 'tag'}) },
+            '#ditem dl' => sub{
+                my($yield) = @_;
+                my @a = @symbol;
+                while (($t, $d) = splice @a, 0, 2) {
+                    $yield->({-skip => 'tag'});
+                }
+            },
+            '#ditem dt' => sub{ shift->($t) },
+            '#ditem dd' => sub{ shift->($d) },
+        };
+    }->();
+
+=head1 SEE ALSO
+
+L<http://amrita.sourceforge.jp/index.html>
+
+=head1 AUTHOR
+
+MIZUTANI Tociyuki  C<< <tociyuki@gmail.com> >>
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2010, MIZUTANI Tociyuki C<< <tociyuki@gmail.com> >>.
+All rights reserved.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=cut
+

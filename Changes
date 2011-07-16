@@ -1,0 +1,8 @@
+Revision history for Text-Ampita
+
+0.002  Tue May 18 14:40:13 2010 GMT
+    ! clean codes in function _attr()
+
+0.001  Tue May 18 08:11:44 2010 GMT
+    + Initial release.
+
