@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.003';
+use version; our $VERSION = '0.004';
 # $Id$
 # $Version$
 
@@ -37,11 +37,12 @@ sub generate {
         . "my \$r='$class';\n"
         . "my \$t=q{};\n";
     my @path = ($doc);
-    my($node, $i) = ($doc, 0);
-    my @todo = (sub{});
+    my @todo = ($doc, 0);
+    my @defer;
     while (@todo) {
-        (pop @todo)->();
-        while ($i < @{$node->[1] || []}) {
+        my $i = pop @todo;
+        my $node = pop @todo;
+        while ($i < @{$node->[1]}) {
             my $child = $node->[1][$i++];
             if (! ref $child) {
                 $perl .= $class->_build_data($child);
@@ -56,15 +57,17 @@ sub generate {
                     :      ('_build_stag', '_build_etag');
                 $perl .= $class->$build_start($child, $key);
                 next if $child->[0][5] eq q{/>};
-                my($cont_node, $cont_i) = ($node, $i);
-                ($node, $i) = ($child, 0);
                 push @path, $child;
-                push @todo, sub{
-                    $perl .= $class->$build_end($node);
-                    pop @path;
-                    ($node, $i) = ($cont_node, $cont_i);
-                };
+                push @defer, $build_end, $child;
+                push @todo, $node, $i;
+                ($node, $i) = ($child, 0);
             }
+        }
+        if (@defer) {
+            my $child = pop @defer;
+            my $build_end = pop @defer;
+            $perl .= $class->$build_end($child);
+            pop @path;
         }
     }
     return $perl
@@ -96,10 +99,13 @@ sub _scan {
                 = ($1, $2, $3, $4, $5, $6, $7, $8);
             if ($id1) {
                 my $attr = [$t2 =~ m{$ATTR}msxog];
-                my $element = [[$t, q{<}, $id1, $attr, $sp3, $gt4, $nl8]];
+                my $element = [
+                    [$t, q{<}, $id1, $attr, $sp3, $gt4, $nl8],
+                    [],
+                    [q{}, q{}, q{}, [], q{}, q{}, q{}],
+                ];
                 push @{$node->[1]}, $element;
                 next if $gt4 eq q{/>};
-                push @{$element}, [];
                 push @ancestor, $node;
                 $node = $element;
                 next;
@@ -107,12 +113,16 @@ sub _scan {
             elsif ($id5) {
                 my $id1 = $node->[0][2];
                 $id5 eq $id1 or croak "<$id1> ne </$id5>";
-                push @{$node}, [$t, q{</}, $id5, [], $sp6, q{>}, $nl8];
+                $node->[2] = [$t, q{</}, $id5, [], $sp6, q{>}, $nl8];
                 $node = pop @ancestor;
                 next;
             }
             elsif ($t7) {
-                push @{$node->[1]}, [[$t, q{}, q{}, [], "<$t7>", q{}, $nl8]];
+                push @{$node->[1]}, [
+                    [$t, q{}, q{}, [], "<$t7>", q{}, $nl8],
+                    [],
+                    [q{}, q{}, q{}, [], q{}, q{}, q{}],
+                ];
                 next;
             }
             else {
@@ -369,7 +379,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
 
 =head1 VERSION
 
-0.003
+0.004
 
 =head1 SYNOPSIS
 

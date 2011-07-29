@@ -1,5 +1,8 @@
 Revision history for Text-Ampita
 
+0.004  Fri Jul 29 06:14:58 2011 GMT
+    ! rewrite generate with @defer stack instead of closures.
+
 0.003  Sat Jul 16 05:10:02 2011 GMT
     ! delete function _etag()
     + escape backslashs too.
