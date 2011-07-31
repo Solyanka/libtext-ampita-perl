@@ -64,7 +64,7 @@ __END__
   dc:data="2006-07-22T14:05:23+09:00" />
 
 <rdf:Description rdf:about="hoge.html">
- <dc:title>hoge</dc:title>
+ <dc:title>Hoge</dc:title>
 </rdf:Description>
 <rdf:Description rdf:about="http://example.jp/blog/foo">
  <dc:title>example &nbsp; hoge</dc:title>

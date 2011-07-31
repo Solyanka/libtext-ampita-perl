@@ -1,5 +1,10 @@
 Revision history for Text-Ampita
 
+0.005  Sun Jul 31 00:37:45 2011 GMT
+    + introduce several CSS selector: '~=', '^=', '$=', '*=', '|='.
+    ! .name is '*[class~="name"]'
+    ! #name is '*[id="name"]'
+
 0.004  Fri Jul 29 06:14:58 2011 GMT
     ! rewrite generate with @defer stack instead of closures.
 

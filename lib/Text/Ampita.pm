@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.004';
+use version; our $VERSION = '0.005';
 # $Id$
 # $Version$
 
@@ -144,41 +144,66 @@ sub _scan {
 sub _find_hint {
     my($class, $hint, @path) = @_;
     for my $k (keys %{$hint}) {
-        if ($class->_match_selector_list($k, @path)) {
+        if ($class->_match_selector($k, @path)) {
             return $k;
         }
     }
     return;
 }
 
-sub _match_selector_list {
-    my($class, $selector_list, @path) = @_;
-    my @selist = split /\s+/msx, $selector_list;
-    return if ! $class->_match_selector(pop @selist, pop @path);
-    my $selector = shift @selist or return 1;
+sub _match_selector {
+    my($class, $selector, @path) = @_;
+    my @selist = split /\s+/msx, $selector;
+    return if ! $class->_match_selector_term(pop @selist, pop @path);
+    my $seterm = shift @selist or return 1;
     for my $element (@path) {
-        next if ! $class->_match_selector($selector, $element);
-        $selector = shift @selist or return 1;
+        next if ! $class->_match_selector_term($seterm, $element);
+        $seterm = shift @selist or return 1;
     }
     return;
 }
 
-sub _match_selector {
-    my($class, $selector, $element) = @_;
+sub _match_selector_term {
+    my($class, $seterm, $element) = @_;
     my $stag = $element->[0];
-    if ($selector =~ m{\A
-        (?:($ID) (?:\#($ID)|\.([a-zA-Z0-9_:-]+)|\[($ID)=\"([^\"]+)\"\])?
-        |  \*?   (?:\#($ID)|\.([a-zA-Z0-9_:-]+)|\[($ID)=\"([^\"]+)\"\])
-        )
-    \z}msxo) {
-        my($tagname, $id, $classname) = ($1, $2 || $6, $3 || $7);
-        my($attr, $value) = $id ? ('id', $id)
-            : $classname ? ('class', $classname)
-            : ($4 || $8, $5 || $9);
-        return (! $tagname || $stag->[2] eq $tagname)
-            && (! $attr || $value eq ($class->_attr($stag, $attr) || q{}));
+    my $element_name = $stag->[2];
+    if ($seterm =~ m{\A
+        ($ID)(?:\#($ID)|[.]([a-zA-Z0-9_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])?
+    |   [*]? (?:\#($ID)|[.]([a-zA-Z0-9_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])
+    \z}mosx) {
+        my($tagname, $id, $classname) = ($1, $2 || $7, $3 || $8);
+        my($attr, $op, $str) = $id ? ('id', q{=}, $id)
+            : $classname ? ('class', q{~=}, $classname)
+            : ($4 || $9, $5 || $10, $6 || $11);
+        return (! $tagname || $element_name eq $tagname)
+            && (! $attr || $class->_attr_match($stag, $attr, $op, $str));
     }
     return;
+}
+
+# see http://www.w3.org/TR/css-2010/#selectors
+sub _attr_match {
+    my($class, $stag, $attr, $op, $str) = @_;
+    my $value = $class->_attr($stag, $attr);
+    $value = defined $value ? $value : q{};
+    if ($op eq q{~=}) {
+        return 0 <= index " $value ", " $str ";
+    }
+    if ($op eq q{^=}) {
+        return $str eq (substr $value, 0, length $str);
+    }
+    if ($op eq q{$=}) {
+        my($vsize, $psize) = ((length $value), (length $str));
+        return $vsize >= $psize
+            && $str eq (substr $value, $vsize - $psize, $psize);
+    }
+    if ($op eq q{*=}) {
+        return 0 <= index $value, $str;
+    }
+    if ($op eq q{|=}) {
+        return 0 <= index "-$value-", "-$str-";
+    }
+    return $value eq $str;
 }
 
 sub _data {
@@ -379,7 +404,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
 
 =head1 VERSION
 
-0.004
+0.005
 
 =head1 SYNOPSIS
 

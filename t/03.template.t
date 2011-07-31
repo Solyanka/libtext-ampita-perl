@@ -177,6 +177,91 @@ __END__
 <p id="foo">FOO</p>
 <p id="bar">BAR</p>
 
+=== .class
+--- input
+'<p class="foo"></p>
+<p class="bar foo"></p>',
+{
+    '.foo' => sub{ shift->('FOO') },
+}
+--- expected
+<p class="foo">FOO</p>
+<p class="bar foo">FOO</p>
+
+=== [class~="foo"]
+--- input
+'<p class="foo"></p>
+<p class="bar foo"></p>',
+{
+    '[class~="foo"]' => sub{ shift->('FOO') },
+}
+--- expected
+<p class="foo">FOO</p>
+<p class="bar foo">FOO</p>
+
+=== [class="foo"]
+--- input
+'<p class="foo"></p>
+<p class="bar foo">bar</p>',
+{
+    '[class="foo"]' => sub{ shift->('FOO') },
+}
+--- expected
+<p class="foo">FOO</p>
+<p class="bar foo">bar</p>
+
+=== [class^="foo"]
+--- input
+'<p class="foo"></p>
+<p class="foo bar"></p>
+<p class="bar foo">bar</p>',
+{
+    '[class^="foo"]' => sub{ shift->('FOO') },
+}
+--- expected
+<p class="foo">FOO</p>
+<p class="foo bar">FOO</p>
+<p class="bar foo">bar</p>
+
+=== [class$="foo"]
+--- input
+'<p class="foo"></p>
+<p class="foo bar">bar</p>
+<p class="bar foo"></p>',
+{
+    '[class$="foo"]' => sub{ shift->('FOO') },
+}
+--- expected
+<p class="foo">FOO</p>
+<p class="foo bar">bar</p>
+<p class="bar foo">FOO</p>
+
+=== [class*="oo"]
+--- input
+'<p class="foo"></p>
+<p class="bar">bar</p>
+<p class="bar foo"></p>',
+{
+    '[class*="oo"]' => sub{ shift->('ok') },
+}
+--- expected
+<p class="foo">ok</p>
+<p class="bar">bar</p>
+<p class="bar foo">ok</p>
+
+=== [class|="entry"]
+--- input
+'<p class="entry">not ok</p>
+<p class="entry-body">not ok</p>
+<p class="hentry-body">not ok</p>',
+{
+    '[class|="entry"]' => sub{ shift->('ok') },
+}
+--- expected
+<p class="entry">ok</p>
+<p class="entry-body">ok</p>
+<p class="hentry-body">not ok</p>
+
 === .class tagname
 --- input
 '<p class="foo"><span></span></p>
@@ -447,7 +532,7 @@ if (hoge<fuga) { fuga(); }
     '#sha1' => sub{ shift->('46f39be840c113a8d654aff099814f49bb5639b6') },
     '#blog' => sub{
         shift->({
-            'rdf:resource' => "http://d.hatena.ne.jp/tociyuki",
+            'rdf:resource' => "http://d.hatena.ne.jp/tociyuki/",
             'dc:title' => "Tociyuki::Diary",
         });
     },
@@ -462,7 +547,7 @@ if (hoge<fuga) { fuga(); }
 <foaf:Person rdf:ID="tociyuki">
  <foaf:mbox_sha1sum>46f39be840c113a8d654aff099814f49bb5639b6</foaf:mbox_sha1sum>
  <foaf:name>MIZUTANI, Tociyuki</foaf:name>
- <foaf:weblog dc:title="Tociyuki::Diary" rdf:resource="http://d.hatena.ne.jp/tociyuki" />
+ <foaf:weblog dc:title="Tociyuki::Diary" rdf:resource="http://d.hatena.ne.jp/tociyuki/" />
 </foaf:Person>
 </rdf:RDF>
 

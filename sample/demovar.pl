@@ -63,6 +63,7 @@ __END__
 </div>
 <ol>
  <li>Jan Mayen</li>
+ <li>Bodo</li>
  <li>Trondheim</li>
  <li>Bergen</li>
 </ol>
