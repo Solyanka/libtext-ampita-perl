@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.005';
+use version; our $VERSION = '0.006';
 # $Id$
 # $Version$
 
@@ -11,7 +11,7 @@ my %XML_SPECIAL = (
     q{&} => '&amp;', q{<} => '&lt;', q{>} => '&gt;',
     q{"} => '&quot;', q{'} => q{&#39;}, q{\\} => q{&#92;},
 ); 
-my $ID = qr{[A-Za-z_:][A-Za-z0-9_:-]*}msx;
+my $ID = qr{[[:alpha:]_:][[:alnum:]_:-]*}msx;
 my $SP = qr{[\x20\t\n\r]}msx;
 my $NL = qr{(?:\r\n?|\n)}msx;
 my $ATTR = qr{($SP+)($ID)($SP*=$SP*\")([^<>\"]*)(\")}msx;
@@ -168,8 +168,8 @@ sub _match_selector_term {
     my $stag = $element->[0];
     my $element_name = $stag->[2];
     if ($seterm =~ m{\A
-        ($ID)(?:\#($ID)|[.]([a-zA-Z0-9_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])?
-    |   [*]? (?:\#($ID)|[.]([a-zA-Z0-9_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])
+        ($ID)(?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])?
+    |   [*]? (?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])
     \z}mosx) {
         my($tagname, $id, $classname) = ($1, $2 || $7, $3 || $8);
         my($attr, $op, $str) = $id ? ('id', q{=}, $id)
@@ -192,7 +192,7 @@ sub _attr_match {
     if ($op eq q{^=}) {
         return $str eq (substr $value, 0, length $str);
     }
-    if ($op eq q{$=}) {
+    if ($op eq qq(\x24=)) {
         my($vsize, $psize) = ((length $value), (length $str));
         return $vsize >= $psize
             && $str eq (substr $value, $vsize - $psize, $psize);
@@ -347,7 +347,7 @@ sub _choose_filter {
 sub _attr_filter {
     my($class, $stag, $attrname, $value) = @_;
     return $value if ! defined $value;
-    my $tagname = lc $stag->[3];
+    my $tagname = lc $stag->[2];
     my $filter = $class->_choose_filter(
         $class->_attr($stag, $attrname) || q{},
         $tagname eq 'input' && $attrname eq 'value' ? 'xml'
@@ -370,7 +370,11 @@ sub _filter_text {
     my($class, $t) = @_;
     $t = defined $t ? $t : q{};
     $t =~ s{
-        (?:([<>"'\\])|\&(?:([A-Za-z_]\w*|\#(?:[0-9]{1,5}|x[0-9A-Fa-f]{2,4}));)?)
+        (?:([<>"'\\])
+        |   \&(?:([[:alpha:]_][[:alnum:]_]*
+            |\#(?:[[:digit:]]{1,5}|x[[:xdigit:]]{2,4}));
+            )?
+        )
     }{
         $1 ? $XML_SPECIAL{$1} : $2 ? qq{\&$2;} : q{&amp;}
     }egmosx;
@@ -385,7 +389,7 @@ sub _filter_uri {
         $t = Encode::encode('utf-8', $t);
     }
     $t =~ s{
-        (%([0-9A-Fa-f]{2})?)|(&(?:amp;)?)|([^A-Za-z0-9\-_~*+=/.!,;:\@?\#])
+        (%([[:xdigit:]]{2})?)|(&(?:amp;)?)|([^[:alnum:]\-_~*+=/.!,;:\@?\#])
     }{
         $2 ? $1 : $1 ? q{%25} : $3 ? q{&amp;} : sprintf '%%%02X', ord $4
     }egmosx;
@@ -404,7 +408,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
 
 =head1 VERSION
 
-0.005
+0.006
 
 =head1 SYNOPSIS
 

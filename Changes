@@ -1,5 +1,8 @@
 Revision history for Text-Ampita
 
+0.006  Fri Feb 24 13:48:03 2012
+    ! FIX: lost tagname in _attr_filter.
+
 0.005  Sun Jul 31 00:37:45 2011 GMT
     + introduce several CSS selector: '~=', '^=', '$=', '*=', '|='.
     ! .name is '*[class~="name"]'

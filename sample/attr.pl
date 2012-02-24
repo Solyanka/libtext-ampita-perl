@@ -48,6 +48,6 @@ __END__
  <body>
   <h1><a href="http://hoge.gr.jp/">replacing attributes</a></h1>
   <p><a href="http://example.net/ja/">examples (Japanese)</a></p>
-  <p><a href="http://d.hatena.ne.jp/tociyuki/132424">id:tociyuki:132424</a></p>
+  <p><a href="http://d.hatena.ne.jp/someone/132424">id:someone:132424</a></p>
  </body>
 </html>

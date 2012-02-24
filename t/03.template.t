@@ -411,6 +411,24 @@ FOO
  e="&<>&amp;%12%45%+"
  f="&amp;&lt;&gt;&quot;&#92;&amp;%12%45%+"/>
 
+=== attribute input default filter
+--- input
+'<input type="hidden"
+    name=""
+    value="" />',
+{
+    'input' => sub{
+        shift->({
+            'name' => '&<>"\\&amp;%12%45%+',
+            'value' => '&<>"\\&amp;%12%45%+',
+        });
+    },
+}
+--- expected 
+<input type="hidden"
+    name="&amp;&lt;&gt;&quot;&#92;&amp;%12%45%+"
+    value="&amp;&lt;&gt;&quot;&#92;&amp;amp;%12%45%+" />
+
 === add attribute
 --- input
 '<b id="hoge" title="fuga">org.</b>',
