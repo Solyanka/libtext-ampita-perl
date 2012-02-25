@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.006';
+use version; our $VERSION = '0.007';
 # $Id$
 # $Version$
 
@@ -38,7 +38,7 @@ sub generate {
         . "require $class;\n"
         . "my \$r='$class';\n"
         . "my \$t=q();\n";
-    my @path = ($doc);
+    my @path;
     my @todo = ($doc, 0);
     my @defer;
     while (@todo) {
@@ -53,13 +53,13 @@ sub generate {
                 $perl .= $class->_build_data($class->_data($child));
             }
             else {
-                my $key = $class->_find_hint($hint, @path, $child);
+                my $key = $class->_find_hint($hint, @path, $child->[0]);
                 my($build_start, $build_end) =
                     $key ? ('_build_scode', '_build_ecode')
                     :      ('_build_stag', '_build_etag');
                 $perl .= $class->$build_start($child, $key);
                 next if $child->[0][5] eq q(/>);
-                push @path, $child;
+                push @path, $child->[0];
                 push @defer, $build_end, $child;
                 push @todo, $node, $i;
                 ($node, $i) = ($child, 0);
@@ -158,16 +158,15 @@ sub _match_selector {
     my @selist = split /\s+/msx, $selector;
     return if ! $class->_match_selector_term(pop @selist, pop @path);
     my $seterm = shift @selist or return 1;
-    for my $element (@path) {
-        next if ! $class->_match_selector_term($seterm, $element);
+    for my $stag (@path) {
+        next if ! $class->_match_selector_term($seterm, $stag);
         $seterm = shift @selist or return 1;
     }
     return;
 }
 
 sub _match_selector_term {
-    my($class, $seterm, $element) = @_;
-    my $stag = $element->[0];
+    my($class, $seterm, $stag) = @_;
     my $element_name = $stag->[2];
     if ($seterm =~ m{\A
         ($ID)(?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])?
@@ -312,8 +311,8 @@ sub _attr {
     for my $i (@indecs) {
         if ($attr->[$i + 1] eq $name) {
             if (@arg == 1 && ! defined $arg[0]) {
-                my @a = splice @{$attr}, $i, 5;
-                return $a[3];
+                my @got = splice @{$attr}, $i, 5;
+                return $got[3];
             }
             elsif (@arg) {
                 $attr->[$i + 3] = $arg[0];
@@ -322,11 +321,11 @@ sub _attr {
         }
     }
     if (@arg && defined $arg[0]) {
-        my @a = @{$attr} ? @{$attr}[-5 .. -1]
+        my @got = @{$attr} ? @{$attr}[-5 .. -1]
             : (q( ), q(), q(="), q(), q("));
-        @a[1, 3] = ($name, $arg[0]);
-        push @{$attr}, @a;
-        return $a[3];
+        @got[1, 3] = ($name, $arg[0]);
+        push @{$attr}, @got;
+        return $got[3];
     }
     return;
 }
@@ -410,7 +409,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
 
 =head1 VERSION
 
-0.006
+0.007
 
 =head1 SYNOPSIS
 
@@ -458,7 +457,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
         };
     }->();
 
-    my $tmplpkg = "Example::T" . (int rand 100000);
+    my $tmplpkg = "Text::Ampita::Jail" . (int rand 100000);
     my $perl = "package $tmplpkg;" . Text::Ampita->generate($xhtml, $binding);
     my $template = eval $perl;
     print encode('utf-8', $template->($binding));

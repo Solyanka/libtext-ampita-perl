@@ -1,5 +1,10 @@
 Revision history for Text-Ampita
 
+
+0.007  Sat Feb 25 03:02:57 2012
+    ! change notation q() insteads of q{}.
+    ! change _match_selector's path ArrayRef[stag] from ArrayRef[element].
+
 0.006  Fri Feb 24 13:48:03 2012
     ! FIX: lost tagname in _attr_filter.
 
