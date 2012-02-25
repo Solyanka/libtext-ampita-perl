@@ -7,12 +7,14 @@ use version; our $VERSION = '0.006';
 # $Id$
 # $Version$
 
+## no critic qw(ComplexRegexes EscapedMetacharacters EnumeratedClasses)
+
 my %XML_SPECIAL = (
-    q{&} => '&amp;', q{<} => '&lt;', q{>} => '&gt;',
-    q{"} => '&quot;', q{'} => q{&#39;}, q{\\} => q{&#92;},
+    q(&) => '&amp;', q(<) => '&lt;', q(>) => '&gt;',
+    q(") => '&quot;', q(') => q(&#39;), q(\\) => q(&#92;),
 ); 
 my $ID = qr{[[:alpha:]_:][[:alnum:]_:-]*}msx;
-my $SP = qr{[\x20\t\n\r]}msx;
+my $SP = q([ \\t\\n\\r]);
 my $NL = qr{(?:\r\n?|\n)}msx;
 my $ATTR = qr{($SP+)($ID)($SP*=$SP*\")([^<>\"]*)(\")}msx;
 
@@ -35,7 +37,7 @@ sub generate {
         . "use utf8;\n"
         . "require $class;\n"
         . "my \$r='$class';\n"
-        . "my \$t=q{};\n";
+        . "my \$t=q();\n";
     my @path = ($doc);
     my @todo = ($doc, 0);
     my @defer;
@@ -47,7 +49,7 @@ sub generate {
             if (! ref $child) {
                 $perl .= $class->_build_data($child);
             }
-            elsif ($child->[0][1] ne q{<}) {
+            elsif ($child->[0][1] ne q(<)) {
                 $perl .= $class->_build_data($class->_data($child));
             }
             else {
@@ -56,7 +58,7 @@ sub generate {
                     $key ? ('_build_scode', '_build_ecode')
                     :      ('_build_stag', '_build_etag');
                 $perl .= $class->$build_start($child, $key);
-                next if $child->[0][5] eq q{/>};
+                next if $child->[0][5] eq q(/>);
                 push @path, $child;
                 push @defer, $build_end, $child;
                 push @todo, $node, $i;
@@ -78,9 +80,9 @@ sub generate {
 sub _scan {
     my($class, $xml) = @_;
     my $document = [
-        [q{}, q{}, q{}, [], q{}, q{}, q{}],
+        [q(), q(), q(), [], q(), q(), q()],
         [],
-        [q{}, q{}, q{}, [], q{}, q{}, q{}],
+        [q(), q(), q(), [], q(), q(), q()],
     ];
     my @ancestor;
     my $node = $document;
@@ -100,12 +102,12 @@ sub _scan {
             if ($id1) {
                 my $attr = [$t2 =~ m{$ATTR}msxog];
                 my $element = [
-                    [$t, q{<}, $id1, $attr, $sp3, $gt4, $nl8],
+                    [$t, q(<), $id1, $attr, $sp3, $gt4, $nl8],
                     [],
-                    [q{}, q{}, q{}, [], q{}, q{}, q{}],
+                    [q(), q(), q(), [], q(), q(), q()],
                 ];
                 push @{$node->[1]}, $element;
-                next if $gt4 eq q{/>};
+                next if $gt4 eq q(/>);
                 push @ancestor, $node;
                 $node = $element;
                 next;
@@ -113,23 +115,23 @@ sub _scan {
             elsif ($id5) {
                 my $id1 = $node->[0][2];
                 $id5 eq $id1 or croak "<$id1> ne </$id5>";
-                $node->[2] = [$t, q{</}, $id5, [], $sp6, q{>}, $nl8];
+                $node->[2] = [$t, q(</), $id5, [], $sp6, q(>), $nl8];
                 $node = pop @ancestor;
                 next;
             }
             elsif ($t7) {
                 push @{$node->[1]}, [
-                    [$t, q{}, q{}, [], "<$t7>", q{}, $nl8],
+                    [$t, q(), q(), [], "<$t7>", q(), $nl8],
                     [],
-                    [q{}, q{}, q{}, [], q{}, q{}, q{}],
+                    [q(), q(), q(), [], q(), q(), q()],
                 ];
                 next;
             }
             else {
-                $t .= q{<};
+                $t .= q(<);
             }
         }
-        $t .= $xml =~ m{\G([^<\r\n]+$NL*|$NL+)}msxogc ? $1 : q{};
+        $t .= $xml =~ m{\G([^<\r\n]+$NL*|$NL+)}msxogc ? $1 : q();
         if (@{$node->[1]} == 0 || ref $node->[1][-1]) {
             push @{$node->[1]}, $t;
         }
@@ -172,8 +174,8 @@ sub _match_selector_term {
     |   [*]? (?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])
     \z}mosx) {
         my($tagname, $id, $classname) = ($1, $2 || $7, $3 || $8);
-        my($attr, $op, $str) = $id ? ('id', q{=}, $id)
-            : $classname ? ('class', q{~=}, $classname)
+        my($attr, $op, $str) = $id ? ('id', q(=), $id)
+            : $classname ? ('class', q(~=), $classname)
             : ($4 || $9, $5 || $10, $6 || $11);
         return (! $tagname || $element_name eq $tagname)
             && (! $attr || $class->_attr_match($stag, $attr, $op, $str));
@@ -185,11 +187,11 @@ sub _match_selector_term {
 sub _attr_match {
     my($class, $stag, $attr, $op, $str) = @_;
     my $value = $class->_attr($stag, $attr);
-    $value = defined $value ? $value : q{};
-    if ($op eq q{~=}) {
+    $value = defined $value ? $value : q();
+    if ($op eq q(~=)) {
         return 0 <= index " $value ", " $str ";
     }
-    if ($op eq q{^=}) {
+    if ($op eq q(^=)) {
         return $str eq (substr $value, 0, length $str);
     }
     if ($op eq qq(\x24=)) {
@@ -197,10 +199,10 @@ sub _attr_match {
         return $vsize >= $psize
             && $str eq (substr $value, $vsize - $psize, $psize);
     }
-    if ($op eq q{*=}) {
+    if ($op eq q(*=)) {
         return 0 <= index $value, $str;
     }
-    if ($op eq q{|=}) {
+    if ($op eq q(|=)) {
         return 0 <= index "-$value-", "-$str-";
     }
     return $value eq $str;
@@ -208,11 +210,11 @@ sub _attr_match {
 
 sub _data {
     my($class, $node) = @_;
-    if ($node->[0][1] eq q{<}) {
-        return exists $node->[1] && ! ref $node->[1][0] ? $node->[1][0] : q{};
+    if ($node->[0][1] eq q(<)) {
+        return exists $node->[1] && ! ref $node->[1][0] ? $node->[1][0] : q();
     }
     else {
-        return join q{}, @{$node->[0]}[0, 4, 6];
+        return join q(), @{$node->[0]}[0, 4, 6];
     }
 }
 
@@ -236,25 +238,25 @@ sub _build_etag {
 
 sub _build_scode {
     my($class, $element, $key) = @_;
-    my $_attr = join q{,}, map { $class->_q($_) } @{$element->[0][3]};
-    my $_stag = join q{,},
+    my $_attr = join q(,), map { $class->_q($_) } @{$element->[0][3]};
+    my $_stag = join q(,),
         (map { $class->_q($_) } @{$element->[0]}[0, 1, 2]),
-        q{[} . $_attr . q{]},
+        q([) . $_attr . q(]),
         (map { $class->_q($_) } @{$element->[0]}[4, 5, 6]);
     my $perl = "\$binding->{" . $class->_q($key) . "}->(sub{\n"
         . "my(\@data) = \@_;\n"
         . "my \$attr = {ref \$data[0] eq 'HASH' ? \%{shift \@data} : ()};\n"
-        . "return if (\$attr->{'-skip'} || q{}) eq 'all';\n"
+        . "return if (\$attr->{'-skip'} || q()) eq 'all';\n"
         . "\$t.=\$r->_stag([$_stag],\$attr);\n";
-    if ($element->[0][5] eq q{/>}) {
+    if ($element->[0][5] eq q(/>)) {
         $perl .= $class->_build_argrest($element);
     }
     else {
         my $filter = $class->_choose_filter(
-            $class->_data($element) || q{},
+            $class->_data($element) || q(),
             $element->[0][2] eq 'textarea' ? 'xml' : 'text',
         );
-        $perl .= "if(\@data){\$t.=\$r->${filter}(join q{},\@data);}else{\n";
+        $perl .= "if(\@data){\$t.=\$r->${filter}(join q(),\@data);}else{\n";
     }
     return $perl;
 }
@@ -262,8 +264,8 @@ sub _build_scode {
 sub _build_argrest {
     my($class, $element) = @_;
     return '}, {'
-        . (join q{,}, map { $class->_q($_) } $class->_attr($element->[0]))
-        . '},' . $class->_q($class->_data($element) || q{}) . ");\n";
+        . (join q(,), map { $class->_q($_) } $class->_attr($element->[0]))
+        . '},' . $class->_q($class->_data($element) || q()) . ");\n";
 }
 
 sub _build_ecode {
@@ -277,9 +279,9 @@ sub _build_ecode {
 
 sub _q {
     my($class, @arg) = @_;
-    my $s = join q{}, @arg;
+    my $s = join q(), @arg;
     $s =~ s/([\\'])/\\$1/msxg;
-    return qq{'$s'};
+    return qq('$s');
 }
 
 sub _stag {
@@ -295,8 +297,8 @@ sub _stag {
     if ($stag->[2] eq 'span' && @{$stag->[3]} == 0) {
         $attr->{-skip} = 'tag';
     }
-    return q{} if $attr->{-skip};
-    return join q{}, @{$stag}[0 .. 2], @{$stag->[3]}, @{$stag}[4 .. 6];
+    return q() if $attr->{-skip};
+    return join q(), @{$stag}[0 .. 2], @{$stag->[3]}, @{$stag}[4 .. 6];
 }
 
 sub _attr {
@@ -321,7 +323,7 @@ sub _attr {
     }
     if (@arg && defined $arg[0]) {
         my @a = @{$attr} ? @{$attr}[-5 .. -1]
-            : (q{ }, q{}, q{="}, q{}, q{"});
+            : (q( ), q(), q(="), q(), q("));
         @a[1, 3] = ($name, $arg[0]);
         push @{$attr}, @a;
         return $a[3];
@@ -349,7 +351,7 @@ sub _attr_filter {
     return $value if ! defined $value;
     my $tagname = lc $stag->[2];
     my $filter = $class->_choose_filter(
-        $class->_attr($stag, $attrname) || q{},
+        $class->_attr($stag, $attrname) || q(),
         $tagname eq 'input' && $attrname eq 'value' ? 'xml'
         : $attrname =~ /(?:\A(?:action|src|href|cite)|resource)\z/msxi ? 'uri'
         : 'text',
@@ -361,14 +363,14 @@ sub _filter_raw { return $_[1] }
 
 sub _filter_xml {
     my($class, $t) = @_;
-    $t = defined $t ? $t : q{};
+    $t = defined $t ? $t : q();
     $t =~ s{([<>"'&\\])}{ $XML_SPECIAL{$1} }egmsx;
     return $t;
 }
 
 sub _filter_text {
     my($class, $t) = @_;
-    $t = defined $t ? $t : q{};
+    $t = defined $t ? $t : q();
     $t =~ s{
         (?:([<>"'\\])
         |   \&(?:([[:alpha:]_][[:alnum:]_]*
@@ -376,14 +378,14 @@ sub _filter_text {
             )?
         )
     }{
-        $1 ? $XML_SPECIAL{$1} : $2 ? qq{\&$2;} : q{&amp;}
+        $1 ? $XML_SPECIAL{$1} : $2 ? qq(\&$2;) : q(&amp;)
     }egmosx;
     return $t;
 };
 
 sub _filter_uri {
     my($class, $t) = @_;
-    $t = defined $t ? $t : q{};
+    $t = defined $t ? $t : q();
     if (utf8::is_utf8($t)) {
         require Encode;
         $t = Encode::encode('utf-8', $t);
@@ -391,7 +393,7 @@ sub _filter_uri {
     $t =~ s{
         (%([[:xdigit:]]{2})?)|(&(?:amp;)?)|([^[:alnum:]\-_~*+=/.!,;:\@?\#])
     }{
-        $2 ? $1 : $1 ? q{%25} : $3 ? q{&amp;} : sprintf '%%%02X', ord $4
+        $2 ? $1 : $1 ? q(%25) : $3 ? q(&amp;) : sprintf q(%%%02X), ord $4
     }egmosx;
     return $t;
 }
