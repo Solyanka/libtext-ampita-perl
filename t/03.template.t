@@ -569,3 +569,458 @@ if (hoge<fuga) { fuga(); }
 </foaf:Person>
 </rdf:RDF>
 
+=== demo get attribute and data
+--- input
+'<html>
+ <body>
+  <h1><a id="mark:a1" href="replaced">replacing attributes</a></h1>
+  <p><a id="mark:a2" href="http://example.net/">examples</a></p>
+  <p><a id="mark:a3" href="http://d.hatena.ne.jp/$1/$2">id:$1:$2</a></p>
+ </body>
+</html>',
+{
+    '#mark:a1' => sub{
+        shift->({href => 'http://hoge.gr.jp/'});
+    },
+    '#mark:a2' => sub{
+        my($yield, $attr, $data) = @_;
+        $yield->({href => $attr->{'href'} . 'ja/'}, $data . ' (Japanese)');
+    },
+    '#mark:a3' => sub{
+        my($yield, $attr, $data) = @_;
+        my @path = ('someone', 132424);
+        my $href = $attr->{'href'};
+        $href =~ s{[\$]([12])}{ $path[$1 - 1] }egmsx;
+        $data =~ s{[\$]([12])}{ $path[$1 - 1] }egmsx;
+        $yield->({href => $href}, $data);
+    },
+}
+--- expected
+<html>
+ <body>
+  <h1><a href="http://hoge.gr.jp/">replacing attributes</a></h1>
+  <p><a href="http://example.net/ja/">examples (Japanese)</a></p>
+  <p><a href="http://d.hatena.ne.jp/someone/132424">id:someone:132424</a></p>
+ </body>
+</html>
+
+=== demo cond (ID-only mode)
+--- input
+'<html>
+ <body>
+  <h1>conditional</h1>
+  <div id="mark:cond">
+  <h2 id="mark:title"></h2>
+  <p id="mark:zero">no data.</p>
+  <p id="mark:one">one: <span id="mark:one-value">data</span>.</p>
+  <ul id="mark:many">
+   <li id="mark:many-each"></li>
+  </ul>
+  </div>
+ </body>
+</html>',
+sub{
+    my $cond;
+    my $many_list_item;
+    return {
+        '#mark:cond' => sub{
+            my($yield) = @_;
+            for my $c (
+                {title => 'three', many => [qw(1 2 3)]},
+                {title => 'zero', zero => 0},
+                {title => 'one', one => 1},
+            ) {
+                $cond = $c;
+                $yield->({-skip => 'tag'});
+            }
+        },
+        '#mark:title' => sub{
+            my($yield) = @_;
+            $yield->($cond->{title});
+        },
+        '#mark:zero' => sub{
+            my($yield) = @_;
+            if (exists $cond->{zero}) {
+                $yield->();
+            }
+        },
+        '#mark:one' => sub{
+            my($yield) = @_;
+            if (exists $cond->{one}) {
+                $yield->();
+            }
+        },
+        '#mark:one-value' => sub{
+            my($yield) = @_;
+            $yield->($cond->{one});
+        },
+        '#mark:many' => sub{
+            my($yield) = @_;
+            if (exists $cond->{many}) {
+                $yield->();
+            }
+        },
+        '#mark:many-each' => sub{
+            my($yield) = @_;
+            for (@{$cond->{many}}) {
+                $yield->($_);
+            }
+        },
+    };
+}->()
+--- expected
+<html>
+ <body>
+  <h1>conditional</h1>
+  <h2>three</h2>
+  <ul>
+   <li>1</li>
+   <li>2</li>
+   <li>3</li>
+  </ul>
+  <h2>zero</h2>
+  <p>no data.</p>
+  <h2>one</h2>
+  <p>one: 1.</p>
+ </body>
+</html>
+
+=== demo cond (CSS mode)
+--- input
+'<html>
+ <body>
+  <h1>conditional</h1>
+  <div id="cond">
+  <h2 id="title"></h2>
+  <p id="zero">no data.</p>
+  <p id="one">one: <span>data</span>.</p>
+  <ul id="many">
+   <li></li>
+  </ul>
+  </div>
+ </body>
+</html>',
+sub{
+    my $cond;
+    my $many_list_item;
+    return {
+        '#cond' => sub{
+            my($yield) = @_;
+            for my $c (
+                {title => 'three', many => [qw(1 2 3)]},
+                {title => 'zero', zero => 0},
+                {title => 'one', one => 1},
+            ) {
+                $cond = $c;
+                $yield->({-skip => 'tag'});
+            }
+        },
+        '#title' => sub{
+            my($yield) = @_;
+            $yield->($cond->{title});
+        },
+        '#zero' => sub{
+            my($yield) = @_;
+            if (exists $cond->{zero}) {
+                $yield->();
+            }
+        },
+        '#one' => sub{
+            my($yield) = @_;
+            if (exists $cond->{one}) {
+                $yield->();
+            }
+        },
+        '#one span' => sub{
+            my($yield) = @_;
+            $yield->($cond->{one});
+        },
+        '#many' => sub{
+            my($yield) = @_;
+            if (exists $cond->{many}) {
+                $yield->();
+            }
+        },
+        '#many li' => sub{
+            my($yield) = @_;
+            for (@{$cond->{many}}) {
+                $yield->($_);
+            }
+        },
+    };
+}->()
+--- expected
+<html>
+ <body>
+  <h1>conditional</h1>
+  <h2>three</h2>
+  <ul>
+   <li>1</li>
+   <li>2</li>
+   <li>3</li>
+  </ul>
+  <h2>zero</h2>
+  <p>no data.</p>
+  <h2>one</h2>
+  <p>one: 1.</p>
+ </body>
+</html>
+
+=== demo form
+--- input
+'<html>
+ <body>
+  <form id="form1">
+   <select name="f0">
+    <option></option>
+   </select>
+   <input type="text" name="f1" />
+   <textarea name="f2"></textarea>
+   <select name="f3">
+    <option value="f3a">F3A</option>
+    <option value="f3b">F3B</option>
+    <option value="f3c">F3C</option>
+   </select>
+   <div id="f4g">
+   <input type="checkbox" name="f4" /><span id="f4v">&nbsp;</span>,
+   </div>
+   <input type="radio" name="f5" value="a" />A,
+   <input type="radio" name="f5" value="b" />B,
+   <input type="radio" name="f5" value="c" />C,
+  </form>
+ </body>
+</html>',
+sub{
+    my($value, $label);
+    return {
+        '#form1' => sub{
+            shift->({method => 'post', action => 'hoge'});
+        },
+        'select[name="f0"] option' => sub{
+            my($yield) = @_;
+            my $sel = 'f0c';
+            for my $v (qw(f0a f0b f0c f0d)) {
+                my @sel = $sel eq $v ? (selected => 'selected') : ();
+                $yield->({value => $v, @sel}, uc $v);
+            }
+        },
+        'input[name="f1"]' => sub{ shift->({value => 'hoge <&nbsp;">'}) },
+        'textarea[name="f2"]' => sub{ shift->('fuga <&nbsp;">') },
+        'select[name="f3"] option[value="f3b"]' => sub{
+            shift->({selected => 'selected'});
+        },
+        '#f4g' => sub{
+            my($yield) = @_;
+            for my $v (qw(foo bar baz)) {
+                ($value, $label) = ($v, uc $v);
+                $yield->({-skip => 'tag'});
+            }
+        },
+        'input[name="f4"]' => sub{
+            shift->({value => $value});
+        },
+        '#f4v' => sub{
+            shift->($label);
+        },
+        'input[name="f5"]' => sub{
+            my($yield, $attr) = @_;
+            $yield->(
+                $attr->{'value'} eq 'a' ? {checked => 'checked'} : {}
+            );
+        },
+    }
+}->()
+--- expected
+<html>
+ <body>
+  <form action="hoge" method="post">
+   <select name="f0">
+    <option value="f0a">F0A</option>
+    <option value="f0b">F0B</option>
+    <option value="f0c" selected="selected">F0C</option>
+    <option value="f0d">F0D</option>
+   </select>
+   <input type="text" name="f1" value="hoge &lt;&amp;nbsp;&quot;&gt;" />
+   <textarea name="f2">fuga &lt;&amp;nbsp;&quot;&gt;</textarea>
+   <select name="f3">
+    <option value="f3a">F3A</option>
+    <option value="f3b" selected="selected">F3B</option>
+    <option value="f3c">F3C</option>
+   </select>
+   <input type="checkbox" name="f4" value="foo" />FOO,
+   <input type="checkbox" name="f4" value="bar" />BAR,
+   <input type="checkbox" name="f4" value="baz" />BAZ,
+   <input type="radio" name="f5" value="a" checked="checked" />A,
+   <input type="radio" name="f5" value="b" />B,
+   <input type="radio" name="f5" value="c" />C,
+  </form>
+ </body>
+</html>
+
+=== demo table (ID-only mode)
+--- input
+'<table>
+ <caption id="mark:caption"></caption>
+ <tr id="mark:tr">
+  <td id="mark:td"></td>
+ </tr>
+</table>',
+sub{
+    my $row;
+    my @rows = (
+        [{width => '32', align => 'left'}, 'L1', 'L2'],
+        [{align => 'center', colspan => 2}, 'C1'],
+        [{align => 'right'}, 'R1', 'R2'],
+    );
+    return {
+        '#mark:caption' => sub{ shift->('ABC') },
+        '#mark:tr' => sub{
+            my($yield) = @_;
+            for my $x (@rows) {
+                $row = $x;
+                $yield->();
+            }
+        },
+        '#mark:td' => sub{
+            my($yield) = @_;
+            my($prop, @col) = @{$row};
+            for my $c (@col) {
+                $yield->($prop, $c);
+            }
+        },
+    };
+}->()
+--- expected
+<table>
+ <caption>ABC</caption>
+ <tr>
+  <td width="32" align="left">L1</td>
+  <td width="32" align="left">L2</td>
+ </tr>
+ <tr>
+  <td align="center" colspan="2">C1</td>
+ </tr>
+ <tr>
+  <td align="right">R1</td>
+  <td align="right">R2</td>
+ </tr>
+</table>
+
+=== demo table (CSS mode)
+--- input
+'<table>
+ <caption></caption>
+ <tr>
+  <td></td>
+ </tr>
+</table>',
+sub{
+    my $row;
+    my @rows = (
+        [{width => '32', align => 'left'}, 'L1', 'L2'],
+        [{align => 'center', colspan => 2}, 'C1'],
+        [{align => 'right'}, 'R1', 'R2'],
+    );
+    return {
+        'caption' => sub{ shift->('ABC') },
+        'tr' => sub{
+            my($yield) = @_;
+            for my $x (@rows) {
+                $row = $x;
+                $yield->();
+            }
+        },
+        'td' => sub{
+            my($yield) = @_;
+            my($prop, @col) = @{$row};
+            for my $c (@col) {
+                $yield->($prop, $c);
+            }
+        },
+    };
+}->()
+--- expected
+<table>
+ <caption>ABC</caption>
+ <tr>
+  <td width="32" align="left">L1</td>
+  <td width="32" align="left">L2</td>
+ </tr>
+ <tr>
+  <td align="center" colspan="2">C1</td>
+ </tr>
+ <tr>
+  <td align="right">R1</td>
+  <td align="right">R2</td>
+ </tr>
+</table>
+
+=== demo calendar
+--- input
+'<table class="calendar">
+ <caption id="mark:caltitle"></caption>
+ <tr><th id="mark:calweeklabel">mo tu we th fr st su</th></tr>
+ <tr id="mark:calweek"><td id="mark:calday">&nbsp;</td></tr>
+</table>',
+sub{
+    my($year, $month) = (2012, 3);
+    my $wdoffset = 0;
+    my @yday = (
+        [-31, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365],
+        [-31, 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366],
+    );
+    my @msize = (
+        [31, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
+        [31, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
+    );
+    my $leap = ($year % 4 == 0
+        && $year % 100 != 0 || $year % 400 == 0) ? 1 : 0;
+    my $y = $year - 1;
+    my $wmonth = ($y + (int $y / 4) - (int $y / 100) + (int $y / 400)
+        + $yday[$leap][$month] + $wdoffset) % 7;
+    my $msize = $msize[$leap][$month];
+    my $week;
+    return {
+        '#mark:caltitle' => sub{
+            shift->(sprintf "%04d-%02d", $year, $month);
+        },
+        '#mark:calweeklabel' => sub{
+            my($yield, $attr, $data) = @_;
+            my @wlabel = split /\s+/, $data;
+            for (map { $wlabel[($_ - $wdoffset) % 7] } 0 .. 6) {
+                $yield->($_);
+            }
+        },
+        '#mark:calweek' => sub{
+            my($yield) = @_;
+            for (0 .. 5) {
+                $week = $_;
+                $yield->();
+            }
+        },
+        '#mark:calday' => sub{
+            my($yield) = @_;
+            for my $wday (0 .. 6) {
+                my $day = $week * 7 + $wday - $wmonth + 1;
+                if ($day >= 1 && $day <= $msize) {
+                    $yield->($day);
+                }
+                else {
+                    $yield->();
+                }
+            }
+        },
+    };
+}->()
+--- expected
+<table class="calendar">
+ <caption>2012-03</caption>
+ <tr><th>mo</th><th>tu</th><th>we</th><th>th</th><th>fr</th><th>st</th><th>su</th></tr>
+ <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>1</td><td>2</td><td>3</td><td>4</td></tr>
+ <tr><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td><td>11</td></tr>
+ <tr><td>12</td><td>13</td><td>14</td><td>15</td><td>16</td><td>17</td><td>18</td></tr>
+ <tr><td>19</td><td>20</td><td>21</td><td>22</td><td>23</td><td>24</td><td>25</td></tr>
+ <tr><td>26</td><td>27</td><td>28</td><td>29</td><td>30</td><td>31</td><td>&nbsp;</td></tr>
+ <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+</table>
+

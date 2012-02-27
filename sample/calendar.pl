@@ -5,15 +5,51 @@ use Text::Ampita;
 
 my $source = <<'HTML';
 <table class="calendar">
- <caption></caption>
- <tr><th></th></tr>
- <tr class="week"><td></td></tr>
+ <caption id="mark:caltitle"></caption>
+ <tr><th id="mark:calweeklabel">mo tu we th fr st su</th></tr>
+ <tr id="mark:calweek"><td id="mark:calday">&nbsp;</td></tr>
 </table>
 HTML
 
-my $binding = Calendar->new->binding;
+my $binding = sub{
+    my($cal) = @_;
+    my $wmonth = $cal->wmonth;
+    my $msize= $cal->msize;
+    my $week;
+    return {
+        '#mark:caltitle' => sub{
+            shift->(sprintf "%04d-%02d", $cal->year, $cal->month);
+        },
+        '#mark:calweeklabel' => sub{
+            my($yield, $attr, $data) = @_;
+            my @wlabel = split /\s+/, $data;
+            my $wdoffset = $cal->wdoffset;
+            for (map { $wlabel[($_ - $wdoffset) % 7] } 0 .. 6) {
+                $yield->($_);
+            }
+        },
+        '#mark:calweek' => sub{
+            my($yield) = @_;
+            for (0 .. 5) {
+                $week = $_;
+                $yield->();
+            }
+        },
+        '#mark:calday' => sub{
+            my($yield) = @_;
+            for my $wday (0 .. 6) {
+                my $day = $week * 7 + $wday - $wmonth + 1;
+                if ($day >= 1 && $day <= $msize) {
+                    $yield->($day);
+                }
+                else {
+                    $yield->();
+                }
+            }
+        },
+    };
+}->(Calendar->new);
 my $template = eval Text::Ampita->generate($source, $binding);
-$template->($binding);
 print $template->($binding);
 
 package Calendar;
@@ -28,53 +64,32 @@ sub new {
     return $self;
 }
 
-sub binding {
-    my($self) = @_;
-    my $week;
-    return {
-        '.calendar caption' => sub{
-            shift->(sprintf "%04d-%02d", @{$self}{qw(year month)});
-        },
-        '.calendar th' => sub{
-            my($yield) = @_;
-            my @wlabel = qw(mo tu we th fr st su);
-            for (map { $wlabel[($_ - $self->{wdoffset}) % 7] } 0 .. 6) {
-                $yield->($_);
-            }
-        },
-        '.calendar .week' => sub{
-            my($yield) = @_;
-            for my $w (0 .. 5) {
-                $week = $w;
-                $yield->({'class' => undef});
-            }
-        },
-        '.calendar td' => sub{
-            my($yield) = @_;
-            my($wmonth, $msize) = @{$self}{qw(wmonth msize)};
-            for my $wday (0 .. 6) {
-                my $day = $week * 7 + $wday - $wmonth + 1;
-                $yield->($day >= 1 && $day <= $msize ? $day : '&nbsp;');
-            }
-        },
-    };
-}
+sub year    { return shift->{'year'} }
+sub month   { return shift->{'month'} }
+sub wdoffset { return shift->{'wdoffset'} }
+sub wmonth  { return shift->{'wmonth'} }
+sub msize   { return shift->{'msize'} }
 
 sub initialize {
     my($self, @arg) = @_;
-    $self->{wdoffset} = 0; # 0: mo tu..., 1: su mo tu...
+    $self->{'wdoffset'} = 0; # 0: mo tu..., 1: su mo tu...
     @{$self}{qw(year month)} = $self->_year_month(@arg);
     use integer;
-    my @YDays = ([-31,0,31,59,90,120,151,181,212,243,273,304,334,365],
-                 [-31,0,31,60,91,121,152,182,213,244,274,305,335,366]);
-    my @MSize = ([31,31,28,31,30,31,30,31,31,30,31,30,31],
-                 [31,31,29,31,30,31,30,31,31,30,31,30,31]);
-    my($y, $m) = @{$self}{'year', 'month'};
-    my $leap = ($y % 4 == 0 && $y % 100 != 0 || $y % 400 == 0) ? 1 : 0;
-    $y--;
-    $self->{wmonth} = ($y + $y / 4 - $y / 100 + $y / 400
-        + $YDays[$leap][$m] + $self->{wdoffset}) % 7;
-    $self->{msize} = $MSize[$leap][$m];
+    my @yday = (
+        [-31, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365],
+        [-31, 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366],
+    );
+    my @msize = (
+        [31, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
+        [31, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
+    );
+    my($year, $month) = @{$self}{'year', 'month'};
+    my $leap = ($year % 4 == 0
+        && $year % 100 != 0 || $year % 400 == 0) ? 1 : 0;
+    my $y = $year - 1;
+    $self->{'wmonth'} = ($y + $y / 4 - $y / 100 + $y / 400
+        + $yday[$leap][$month] + $self->{'wdoffset'}) % 7;
+    $self->{'msize'} = $msize[$leap][$month];
     return;
 }
 

@@ -28,10 +28,11 @@ sub extend {
 }
 
 sub generate {
-    my($class, $xml, $hint) = @_;
+    my($class, $xml, $binding) = @_;
     $class = ref $class || $class;
     my $doc = $class->_scan($xml);
-    $hint ||= {};
+    my $hint = $class->_hint($binding);
+    my $idonly = delete $hint->{'##idonly'};
     my $perl = "sub{\n"
         . "my(\$binding)=\@_;\n"
         . "use utf8;\n"
@@ -40,7 +41,7 @@ sub generate {
         . "my \$t=q();\n";
     my @path;
     my @todo = ($doc, 0);
-    my @defer;
+    my @cont;
     while (@todo) {
         my $i = pop @todo;
         my $node = pop @todo;
@@ -48,27 +49,25 @@ sub generate {
             my $child = $node->[1][$i++];
             if (! ref $child) {
                 $perl .= $class->_build_data($child);
+                next;
             }
             elsif ($child->[0][1] ne q(<)) {
                 $perl .= $class->_build_data($class->_data($child));
+                next;
             }
-            else {
-                my $key = $class->_find_hint($hint, @path, $child->[0]);
-                my($build_start, $build_end) =
-                    $key ? ('_build_scode', '_build_ecode')
-                    :      ('_build_stag', '_build_etag');
-                $perl .= $class->$build_start($child, $key);
-                next if $child->[0][5] eq q(/>);
-                push @path, $child->[0];
-                push @defer, $build_end, $child;
-                push @todo, $node, $i;
-                ($node, $i) = ($child, 0);
-            }
+            my $key = $class->_find_hint($idonly, $hint, @path, $child->[0]);
+            my($build_start, $build_end) =
+                $key ? ('_build_scode', '_build_ecode')
+                :      ('_build_stag', '_build_etag');
+            $perl .= $class->$build_start($child, $key);
+            next if $child->[0][5] eq q(/>);
+            push @path, $child->[0];
+            push @cont, $class->$build_end($child);
+            push @todo, $node, $i;
+            ($node, $i) = ($child, 0);
         }
-        if (@defer) {
-            my $child = pop @defer;
-            my $build_end = pop @defer;
-            $perl .= $class->$build_end($child);
+        if (@cont) {
+            $perl .= pop @cont;
             pop @path;
         }
     }
@@ -82,7 +81,6 @@ sub _scan {
     my $document = [
         [q(), q(), q(), [], q(), q(), q()],
         [],
-        [q(), q(), q(), [], q(), q(), q()],
     ];
     my @ancestor;
     my $node = $document;
@@ -104,7 +102,6 @@ sub _scan {
                 my $element = [
                     [$t, q(<), $id1, $attr, $sp3, $gt4, $nl8],
                     [],
-                    [q(), q(), q(), [], q(), q(), q()],
                 ];
                 push @{$node->[1]}, $element;
                 next if $gt4 eq q(/>);
@@ -123,7 +120,6 @@ sub _scan {
                 push @{$node->[1]}, [
                     [$t, q(), q(), [], "<$t7>", q(), $nl8],
                     [],
-                    [q(), q(), q(), [], q(), q(), q()],
                 ];
                 next;
             }
@@ -143,10 +139,55 @@ sub _scan {
     return $document;
 }
 
+sub _hint {
+    my($class, $binding) = @_;
+    my $idonly = 1;
+    my %hint;
+    for my $selector (keys %{$binding}) {
+        if ($selector !~ m/\A[\#]$ID\z/msx) {
+            $idonly = 0;
+        }
+        $hint{$selector} = $class->_precompile_selector($selector);
+    }
+    $hint{'##idonly'} = $idonly;
+    return \%hint;
+}
+
+sub _precompile_selector {
+    my($class, $selector) = @_;
+    my @compiled;
+    for my $seterm (split /\s+/msx, $selector) {
+        if ($seterm =~ m{\A
+            ($ID)(?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])?
+        |   [*]? (?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])
+        \z}mosx) {
+            my($tagname, $id, $classname) = ($1, $2 || $7, $3 || $8);
+            my($attr, $op, $str) = $id ? ('id', q(=), $id)
+                : $classname ? ('class', q(~=), $classname)
+                : ($4 || $9, $5 || $10, $6 || $11);
+            push @compiled, [$tagname, $attr, $op, $str];
+        }
+    }
+    return \@compiled;
+}
+
 sub _find_hint {
-    my($class, $hint, @path) = @_;
+    my($class, $idonly, $hint, @path) = @_;
+    my $stag = $path[-1];
+    if (@{$stag->[3]} && $stag->[3][1] eq 'id') {
+        my $tagname = $stag->[2];
+        my $id = $stag->[3][3];
+        my $se1 = q(#) . $id;
+        my $se2 = $tagname . q(#) . $id;
+        return $se1 if exists $hint->{$se1};
+        return $se2 if exists $hint->{$se2};
+        return if $idonly;
+    }
+    elsif ($idonly) {
+        return;
+    }
     for my $k (keys %{$hint}) {
-        if ($class->_match_selector($k, @path)) {
+        if ($class->_match_selector($hint->{$k}, @path)) {
             return $k;
         }
     }
@@ -155,7 +196,7 @@ sub _find_hint {
 
 sub _match_selector {
     my($class, $selector, @path) = @_;
-    my @selist = split /\s+/msx, $selector;
+    my @selist = @{$selector};
     return if ! $class->_match_selector_term(pop @selist, pop @path);
     my $seterm = shift @selist or return 1;
     for my $stag (@path) {
@@ -168,18 +209,9 @@ sub _match_selector {
 sub _match_selector_term {
     my($class, $seterm, $stag) = @_;
     my $element_name = $stag->[2];
-    if ($seterm =~ m{\A
-        ($ID)(?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])?
-    |   [*]? (?:\#($ID)|[.]([[:alnum:]_:-]+)|\[($ID)([~^\$*|]?=)"([^"]+)"\])
-    \z}mosx) {
-        my($tagname, $id, $classname) = ($1, $2 || $7, $3 || $8);
-        my($attr, $op, $str) = $id ? ('id', q(=), $id)
-            : $classname ? ('class', q(~=), $classname)
-            : ($4 || $9, $5 || $10, $6 || $11);
-        return (! $tagname || $element_name eq $tagname)
-            && (! $attr || $class->_attr_match($stag, $attr, $op, $str));
-    }
-    return;
+    my($tagname, $attr, $op, $str) = @{$seterm};
+    return (! $tagname || $element_name eq $tagname)
+        && (! $attr || $class->_attr_match($stag, $attr, $op, $str));
 }
 
 # see http://www.w3.org/TR/css-2010/#selectors
@@ -187,6 +219,9 @@ sub _attr_match {
     my($class, $stag, $attr, $op, $str) = @_;
     my $value = $class->_attr($stag, $attr);
     $value = defined $value ? $value : q();
+    if ($op eq q(=)) {
+        return $value eq $str;
+    }
     if ($op eq q(~=)) {
         return 0 <= index " $value ", " $str ";
     }
@@ -303,13 +338,15 @@ sub _stag {
 sub _attr {
     my($class, $stag, @arg) = @_;
     my $attr = $stag->[3]; # [(' ', 'name', '="', 'value', '"') ...]
-    my @indecs = map { $_ * 5 } 0 .. -1 + int @{$attr} / 5;
     if (! @arg) {
+        my @indecs = map { $_ * 5 } 0 .. -1 + int @{$attr} / 5;
         return map { @{$attr}[$_ + 1, $_ + 3] } @indecs;
     }
     my $name = shift @arg or return;
-    for my $i (@indecs) {
+    my $i = 0;
+    while ($i < @{$attr}) {
         if ($attr->[$i + 1] eq $name) {
+            return $attr->[$i + 3] if ! @arg;
             if (@arg == 1 && ! defined $arg[0]) {
                 my @got = splice @{$attr}, $i, 5;
                 return $got[3];
@@ -319,11 +356,13 @@ sub _attr {
             }
             return $attr->[$i + 3];
         }
+        $i += 5;
     }
     if (@arg && defined $arg[0]) {
         my @got = @{$attr} ? @{$attr}[-5 .. -1]
             : (q( ), q(), q(="), q(), q("));
-        @got[1, 3] = ($name, $arg[0]);
+        $got[1] = $name;
+        $got[3] = $arg[0];
         push @{$attr}, @got;
         return $got[3];
     }
