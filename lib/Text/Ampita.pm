@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-use version; our $VERSION = '0.007';
+use version; our $VERSION = '0.008';
 # $Id$
 # $Version$
 
@@ -448,7 +448,7 @@ Text::Ampita - Template generator from a xhtml document and runtime for it.
 
 =head1 VERSION
 
-0.007
+0.008
 
 =head1 SYNOPSIS
 
